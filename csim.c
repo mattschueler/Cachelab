@@ -16,13 +16,13 @@ struct Set {
 struct Line {
 	int valid;
 	unsigned long tag;
-	unsigned long LRU_Index;
+	int LRU_Index;
 	char *data;
 };
 
 struct Trace {
 	unsigned long address;
-	int type;
+	char type;
 	int size;
 };
 
@@ -35,74 +35,66 @@ void getInstructInfo(struct Trace *trace, char *singleLine){
 	sscanf(singleLine, " %c %lx,%d", &type,&address,&length);
 	trace->address=address;
 	trace->size=length;
-	switch(type) {
-		case 'L':trace->type=0;break;
-		case 'S':trace->type=1;break;
-		case 'M':trace->type=2;break;
-		default:trace->type=-1;break;
-	}
+	trace->type=type;
 }
-/*
-// in: cache
-// action: tries to load data and checks cache
-int cacheLoad(struct Cache *cache, unsigned long address, int set_lim, int line_lim, int block_bits){
-	int dsize = sizeof(address);
-	int set_num = (address << (dsize - (set_lim + block_bits))) >> (dsize - set_lim);  // get set_lim bits
-	int block_num = (address << (dsize - block_bits)) >> (dsize - block_bits); //get the block_bits bits
-	int tag_bits = address >> (set_lim + block_bits);   // get tag bits
-  
-	// search by tag & check if valid
-	int j=0, hit=0, replace=0;
-	for (; j < line_lim; j++){
-		if(cache->sets[set_num].lines[j].valid == 1 && cache->sets[set_num].lines[j].tag == tag_bits){
-			// cache hit
-			// leave data there and report hit
-			hit = 1;
-		}
-	}
-  
-	// put the data in the cache
-	if (hit == 0){
-		// cache miss
-		// use address to put data into cache
-		// replace if valid bit is 0 then if LRU is lowest
-		for(j = 0; j < line_lim; j++){
-			if(cache->sets[set_num].lines[j].valid == 0){
-				cache->sets[set_num].lines[j].valid == 1;
-				cache->sets[set_num].lines[j].tag == tag_bits;
-				cache->sets[set_num].lines[j].data == block_bits;
-				// make LRU index newest // if no value exists, set to 0 // search through and find greatest value and increase by 1
-				for(j = 0; j < line_lim; j++){
-					if(){
-					}
-				}
-				replace = 1;
-				break;
-			}
-		}
-		if(replace == 0){
-			for(j = 0; j < line_lim; j++){
-				if(cache->sets[set_num].lines[j].LRU_Index <= LOWVAL) LOWVAL = LRU_Index;
 
-			}
-			for(j = 0; j < line_lim; j++){
-				if(cache->sets[set_num].lines[j].LRU_Index == LOWVAL){
-					cache->sets[set_num].lines[j].valid == 1;
-					cache->sets[set_num].lines[j].tag == tag_bits;
-					cache->sets[set_num].lines[j].data == block_bits;
-					// make LRU index newest
-				}
-			}
+//print out the trace info
+void printTrace(struct Trace *trace) {
+	printf("%c\t%lx\t%d\n",trace->type,trace->address,trace->size);
+}
+
+// in: cache, address, cache params
+// action: tries to do load/store (since the data doesn't matter load and store are identical)
+int doTheCache(struct Cache *cache, struct Trace *trace, int set_lim, int line_lim, int block_bits){
+	unsigned long address = trace->address;
+	int dsize = 8*sizeof(address);
+	int set_num = (address << (dsize - (set_lim + block_bits))) >> (dsize - set_lim);  // get set_lim bits
+	int tag_bits = address >> (set_lim + block_bits);   // get tag bits
+	//printf("\naddr %lx dsize%d snum%d tag%d slim%d llim%d bbit%d\n", address,dsize,set_num,tag_bits,set_lim,line_lim,block_bits);
+	// search by tag & check if valid
+	int j, miss=1, replace=1;
+	for (j=0; j < line_lim; j++){
+		struct Line *thisLine = &(cache->sets[set_num].lines[j]);
+		if(thisLine->valid == 1 && thisLine->tag == tag_bits) {
+			// cache hit
+			miss = 0;
+			replace = 0;
+			break;
 		}
 	}
-	return hit;
-}
-*/
-// call to cache
-// in: cache, trace
-// action: calls cache
-int callCache(struct Cache *cache, struct Trace *trace){
-	return 0;
+  
+	// "put" the data in the cache
+	if (miss){
+		// cache miss
+		int LRU_count = 0;
+		int LRU_place = 0;
+		// replace if valid bit is 0...
+		for(j = 0; j < line_lim; j++){
+			struct Line *thisLine = &(cache->sets[set_num].lines[j]);
+			if(thisLine->valid == 0){
+				thisLine->valid = 1;
+				thisLine->tag = tag_bits;
+				thisLine->LRU_Index = 0;
+				for (int k=0; k<line_lim; k++) {
+					struct Line *otherLine = &(cache->sets[set_num].lines[k]);
+					if (otherLine->valid==1) otherLine->LRU_Index++;
+				}
+				replace = 0;
+				break;
+			} else if (thisLine->LRU_Index > LRU_count) {
+				LRU_count = thisLine->LRU_Index;
+				LRU_place = j;
+			}
+		}
+		// ...otherwise evict and replace
+		if(replace){
+			for(j = 0; j < line_lim; j++) cache->sets[set_num].lines[j].LRU_Index++;
+			struct Line *thisLine = &(cache->sets[set_num].lines[LRU_place]);
+			thisLine->tag = tag_bits;
+			thisLine->LRU_Index = 0;
+		}
+	}
+	return miss+replace;
 }
 
 int main(int argc, char *argv[]) {
@@ -160,7 +152,6 @@ int main(int argc, char *argv[]) {
   		cache->sets[i].lines = (struct Line *)malloc(line_lim * sizeof(struct Line));
 		for (int j=0;j<line_lim;j++) {
 			cache->sets[i].lines[j].valid=0;
-			cache->sets[i].lines[j].data = (char *)malloc((1 << block_bits) * sizeof(char));
 		}
 	}
 
@@ -169,25 +160,42 @@ int main(int argc, char *argv[]) {
 	char singleLine[20];
 	
 	struct Trace *nextTrace = malloc(sizeof(struct Trace));
-	while(!feof(fPointer)) {
-		fgets(singleLine, 20, fPointer);
+	int hits=0,misses=0,evicts=0;
+	fgets(singleLine, 20, fPointer);
+	do {
 		getInstructInfo(nextTrace,singleLine);
-		if (verbose);
-	}
+		if (verbose) printf("%c %lx,%d ",nextTrace->type,nextTrace->address,nextTrace->size);
+		int result;
+		result = doTheCache(cache,nextTrace,set_lim,line_lim,block_bits);
+		switch(result) {
+			case 0:hits++;if(verbose)printf("hit ");break;
+			case 1:misses++;if(verbose)printf("miss ");break;
+			case 2:misses++;evicts++;if(verbose)printf("miss eviction ");break;
+			default:if(verbose)printf("oops ");break;
+		}
+		if (nextTrace->type == 'M') {
+			result = doTheCache(cache,nextTrace,set_lim,line_lim,block_bits);
+			switch(result) {
+				case 0:hits++;if (verbose)printf("hit ");break;
+				case 1:misses++;if (verbose)printf("miss ");break;
+				case 2:misses++;evicts++;if (verbose)printf("miss eviction ");break;
+				default:if (verbose)printf("oops ");break;
+			}
+		}
+		if (verbose) printf("\n");
+		fgets(singleLine, 20, fPointer);
+	} while(!feof(fPointer));
 	fclose(fPointer);
 	
 	free(nextTrace);
 	
 	for (int i=0;i<set_lim;i++) {
-  		for (int j=0;j<line_lim;j++) {
-			free(cache->sets[i].lines[j].data);
-		}
 		free(cache->sets[i].lines);
 	}
 	free(cache->sets);
 	free(cache);
 	
-	printSummary(0,0,0);
+	printSummary(hits,misses,evicts);
 	return 0;
 }
 
