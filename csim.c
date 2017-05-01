@@ -48,21 +48,26 @@ void printTrace(struct Trace *trace) {
 int doTheCache(struct Cache *cache, struct Trace *trace, int set_lim, int line_lim, int block_bits){
 	unsigned long address = trace->address;
 	int dsize = 8*sizeof(address);
-	int set_num = (address << (dsize - (set_lim + block_bits))) >> (dsize - set_lim);  // get set_lim bits
-	int tag_bits = address >> (set_lim + block_bits);   // get tag bits
-	//printf("\naddr %lx dsize%d snum%d tag%d slim%d llim%d bbit%d\n", address,dsize,set_num,tag_bits,set_lim,line_lim,block_bits);
+	unsigned set_num = (address << (dsize - (set_lim + block_bits))) >> (dsize - set_lim);  // get set_lim bits
+	unsigned long tag_bits = address >> (set_lim + block_bits);   // get tag bits
+	//printf(" addr%lx dsize%d snum%u tagb%lx slim%d llim%d bbit%d\t\t",address,dsize,set_num,tag_bits,set_lim,line_lim,block_bits);
+	
 	// search by tag & check if valid
 	int j, miss=1, replace=1;
 	for (j=0; j < line_lim; j++){
 		struct Line *thisLine = &(cache->sets[set_num].lines[j]);
-		if(thisLine->valid == 1 && thisLine->tag == tag_bits) {
+		if(thisLine->valid && thisLine->tag == tag_bits) {
 			// cache hit
 			miss = 0;
 			replace = 0;
+			for (int k=0; k<line_lim; k++) {
+				struct Line *otherLine = &(cache->sets[set_num].lines[k]);
+				if (otherLine->valid) otherLine->LRU_Index++;
+			}
+			thisLine->LRU_Index = 0;
 			break;
 		}
 	}
-  
 	// "put" the data in the cache
 	if (miss){
 		// cache miss
@@ -71,14 +76,14 @@ int doTheCache(struct Cache *cache, struct Trace *trace, int set_lim, int line_l
 		// replace if valid bit is 0...
 		for(j = 0; j < line_lim; j++){
 			struct Line *thisLine = &(cache->sets[set_num].lines[j]);
-			if(thisLine->valid == 0){
+			if(!thisLine->valid){
 				thisLine->valid = 1;
 				thisLine->tag = tag_bits;
-				thisLine->LRU_Index = 0;
 				for (int k=0; k<line_lim; k++) {
 					struct Line *otherLine = &(cache->sets[set_num].lines[k]);
-					if (otherLine->valid==1) otherLine->LRU_Index++;
+					if (otherLine->valid) otherLine->LRU_Index++;
 				}
+				thisLine->LRU_Index = 0;
 				replace = 0;
 				break;
 			} else if (thisLine->LRU_Index > LRU_count) {
@@ -130,7 +135,7 @@ int main(int argc, char *argv[]) {
 	} else if (block_bits<0) {
   		printf("Need block bits\n");
 		return -1;
-	} else if (strlen(filename)==0) {
+	} else if (!strlen(filename)) {
 		printf("Need filename\n");
 		return -1;
 	}
@@ -145,10 +150,10 @@ int main(int argc, char *argv[]) {
 		printf("\t-t <tracefile>\tName of valgrind trace to display\n");
 		return 0;
 	}
-		
 	struct Cache *cache = malloc(sizeof(struct Cache));
-	cache->sets = (struct Set *)malloc((1 << set_lim) * sizeof(struct Set));
-	for (int i=0;i<set_lim;i++) {
+	int sets = 1 << set_lim;
+	cache->sets = (struct Set *)malloc(sets * sizeof(struct Set));
+	for (int i=0;i<sets;i++) {
   		cache->sets[i].lines = (struct Line *)malloc(line_lim * sizeof(struct Line));
 		for (int j=0;j<line_lim;j++) {
 			cache->sets[i].lines[j].valid=0;
@@ -164,25 +169,28 @@ int main(int argc, char *argv[]) {
 	fgets(singleLine, 20, fPointer);
 	do {
 		getInstructInfo(nextTrace,singleLine);
-		if (verbose) printf("%c %lx,%d ",nextTrace->type,nextTrace->address,nextTrace->size);
-		int result;
-		result = doTheCache(cache,nextTrace,set_lim,line_lim,block_bits);
-		switch(result) {
-			case 0:hits++;if(verbose)printf("hit ");break;
-			case 1:misses++;if(verbose)printf("miss ");break;
-			case 2:misses++;evicts++;if(verbose)printf("miss eviction ");break;
-			default:if(verbose)printf("oops ");break;
-		}
-		if (nextTrace->type == 'M') {
+		if (nextTrace->type=='I');
+		else {
+			if (verbose) printf("%c %lx,%d ",nextTrace->type,nextTrace->address,nextTrace->size);
+			int result;
 			result = doTheCache(cache,nextTrace,set_lim,line_lim,block_bits);
 			switch(result) {
-				case 0:hits++;if (verbose)printf("hit ");break;
-				case 1:misses++;if (verbose)printf("miss ");break;
-				case 2:misses++;evicts++;if (verbose)printf("miss eviction ");break;
-				default:if (verbose)printf("oops ");break;
+				case 0:hits++;if(verbose)printf("hit ");break;
+				case 1:misses++;if(verbose)printf("miss ");break;
+				case 2:misses++;evicts++;if(verbose)printf("miss eviction ");break;
+				default:break;
 			}
+			if (nextTrace->type == 'M') {
+				result = doTheCache(cache,nextTrace,set_lim,line_lim,block_bits);
+				switch(result) {
+					case 0:hits++;if (verbose)printf("hit ");break;
+					case 1:misses++;if (verbose)printf("miss ");break;
+					case 2:misses++;evicts++;if (verbose)printf("miss eviction ");break;
+					default:break;
+				}
+			}
+			if (verbose) printf("\n");
 		}
-		if (verbose) printf("\n");
 		fgets(singleLine, 20, fPointer);
 	} while(!feof(fPointer));
 	fclose(fPointer);
