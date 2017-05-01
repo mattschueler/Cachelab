@@ -42,7 +42,7 @@ void getInstructInfo(struct Trace *trace, char *singleLine){
 		default:trace->type=-1;break;
 	}
 }
-
+/*
 // in: cache
 // action: tries to load data and checks cache
 int cacheLoad(struct Cache *cache, unsigned long address, int set_lim, int line_lim, int block_bits){
@@ -97,7 +97,7 @@ int cacheLoad(struct Cache *cache, unsigned long address, int set_lim, int line_
 	}
 	return hit;
 }
-
+*/
 // call to cache
 // in: cache, trace
 // action: calls cache
