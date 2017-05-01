@@ -11,6 +11,13 @@
 #include "cachelab.h"
 
 int is_transpose(int M, int N, int A[N][M], int B[M][N]);
+void trans_1(int M, int N, int A[N][M], int B[M][N]);
+void trans_2(int M, int N, int A[N][M], int B[M][N]);
+void trans_3(int M, int N, int A[N][M], int B[M][N]);
+void trans_4(int M, int N, int A[N][M], int B[M][N]);
+void trans_5(int M, int N, int A[N][M], int B[M][N]);
+void trans_6(int M, int N, int A[N][M], int B[M][N]);
+void trans_7(int M, int N, int A[N][M], int B[M][N]);
 
 /* 
  * transpose_submit - This is the solution transpose function that you
@@ -21,7 +28,42 @@ int is_transpose(int M, int N, int A[N][M], int B[M][N]);
  */
 char transpose_submit_desc[] = "Transpose submission";
 void transpose_submit(int M, int N, int A[N][M], int B[M][N])
-{
+{	
+	if ((N-64)<2 && (64-N)<2) {
+		int bigi,bigj,liti,litj,diag=0,temp=0;
+		int incr = 4;
+		for (bigi = 0; bigi < M; bigi += incr) {
+			for (bigj = 0; bigj < N; bigj += incr) {		
+				for (liti = bigj; (liti < bigj + incr) && (liti < N); liti++) {
+					for (litj = bigi; (litj < bigi + incr) && (litj < M); litj++) {
+						if (liti != litj) B[litj][liti] = A[liti][litj];
+						else {
+							temp = A[liti][litj];
+							diag = liti;
+						}
+					}
+					if (bigi == bigj) B[diag][diag] = temp;
+				}
+	 		}
+		}
+	} else {
+		int bigi,bigj,liti,litj,diag=0,temp=0;
+		int incr = 8;
+		for (bigi = 0; bigi < M; bigi += incr) {
+			for (bigj = 0; bigj < N; bigj += incr) {		
+				for (liti = bigj; (liti < bigj + incr) && (liti < N); liti++) {
+					for (litj = bigi; (litj < bigi + incr) && (litj < M); litj++) {
+						if (liti != litj) B[litj][liti] = A[liti][litj];
+						else {
+							temp = A[liti][litj];
+							diag = liti;
+						}
+					}
+					if (bigi == bigj) B[diag][diag] = temp;
+				}
+	 		}
+		}
+	}	
 }
 
 /* 
@@ -46,6 +88,9 @@ void trans(int M, int N, int A[N][M], int B[M][N])
 
 }
 
+char trans_desc_X[] = "";
+void trans_X(int M, int N, int A[N][M], int B[M][N]){}
+
 /*
  * registerFunctions - This function registers your transpose
  *     functions with the driver.  At runtime, the driver will
@@ -55,12 +100,10 @@ void trans(int M, int N, int A[N][M], int B[M][N])
  */
 void registerFunctions()
 {
-    /* Register your solution function */
-    registerTransFunction(transpose_submit, transpose_submit_desc); 
+	/* Register your solution function */
+	registerTransFunction(transpose_submit, transpose_submit_desc); 
 
-    /* Register any additional transpose functions */
-    registerTransFunction(trans, trans_desc); 
-
+	/* Register any additional transpose functions */
 }
 
 /* 
