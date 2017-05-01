@@ -34,7 +34,7 @@ void getInstructInfo(struct Trace *trace, char *singleLine){
 	int length;
 	sscanf(singleLine, " %c %lx,%d", &type,&address,&length);
 	trace->address=address;
-	trace->size=size;
+	trace->size=length;
 	switch(type) {
 		case 'L':trace->type=0;break;
 		case 'S':trace->type=1;break;
@@ -44,16 +44,16 @@ void getInstructInfo(struct Trace *trace, char *singleLine){
 }
 
 // in: cache
-// action: loads data into cache
+// action: tries to load data and checks cache
 int cacheLoad(struct Cache *cache, unsigned long address, int set_lim, int line_lim, int block_bits){
 	int dsize = sizeof(address);
 	int set_num = (address << (dsize - (set_lim + block_bits))) >> (dsize - set_lim);  // get set_lim bits
+	int block_num = (address << (dsize - block_bits)) >> (dsize - block_bits); //get the block_bits bits
 	int tag_bits = address >> (set_lim + block_bits);   // get tag bits
   
 	// search by tag & check if valid
-	int j, hit, replace;
-	hit = 0; replace = 0;
-	for (j = 0; j < line_lim; j++){
+	int j=0, hit=0, replace=0;
+	for (; j < line_lim; j++){
 		if(cache->sets[set_num].lines[j].valid == 1 && cache->sets[set_num].lines[j].tag == tag_bits){
 			// cache hit
 			// leave data there and report hit
@@ -108,13 +108,15 @@ int callCache(struct Cache *cache, struct Trace *trace){
 int main(int argc, char *argv[]) {
 	int set_lim=-1, line_lim=-1, block_bits=-1, help=0, verbose=0;
 	char filename[32] = {0};
-	printf("%s\n", argv[1]);
+	if (argc < 9) {
+		printf("not enough arguments\n");
+		return -1;
+	}
 	for (int i=1;i<argc;i++) {
 		char argbuf[4];
 		char arg[4];
 		strncpy(argbuf,argv[i],4);
-		int n = sscanf(argbuf,"-%s",arg);
-		printf("X%s X%s X%d X%s X%d X%c\n",argv[i],argbuf,n,arg,i,*arg);
+		sscanf(argbuf,"-%s",arg);
 		if (*arg=='h' || (sizeof(arg)>1 && *(arg+1)=='h')) help=1;
 		else if (*arg=='v') verbose=1;
 		else if (*arg=='t') strncpy(filename,argv[++i],fbufsize-1);			
@@ -140,12 +142,24 @@ int main(int argc, char *argv[]) {
 		printf("Need filename\n");
 		return -1;
 	}
+	
+	if (help) {
+		printf("Usage: csim [-hv] -s <s> -e <E> -b <b> -t <tracefile>\n");
+		printf("\t-h\t\tOptional help flag that displays this info\n");
+		printf("\t-v\t\tOptional verbose flag that displays trace info\n");
+		printf("\t-s <s>\t\tNumber of set index bits (number of sets is 2^s)\n");
+		printf("\t-E <E>\t\tAssociativity (number of lines per set)\n");
+		printf("\t-b <b>\t\tNumber of block bits (block size is 2^b)\n");
+		printf("\t-t <tracefile>\tName of valgrind trace to display\n");
+		return 0;
+	}
 		
 	struct Cache *cache = malloc(sizeof(struct Cache));
 	cache->sets = (struct Set *)malloc((1 << set_lim) * sizeof(struct Set));
 	for (int i=0;i<set_lim;i++) {
   		cache->sets[i].lines = (struct Line *)malloc(line_lim * sizeof(struct Line));
 		for (int j=0;j<line_lim;j++) {
+			cache->sets[i].lines[j].valid=0;
 			cache->sets[i].lines[j].data = (char *)malloc((1 << block_bits) * sizeof(char));
 		}
 	}
@@ -158,10 +172,21 @@ int main(int argc, char *argv[]) {
 	while(!feof(fPointer)) {
 		fgets(singleLine, 20, fPointer);
 		getInstructInfo(nextTrace,singleLine);
-		
+		if (verbose);
 	}
 	fclose(fPointer);
-
+	
+	free(nextTrace);
+	
+	for (int i=0;i<set_lim;i++) {
+  		for (int j=0;j<line_lim;j++) {
+			free(cache->sets[i].lines[j].data);
+		}
+		free(cache->sets[i].lines);
+	}
+	free(cache->sets);
+	free(cache);
+	
 	printSummary(0,0,0);
 	return 0;
 }
